@@ -1,0 +1,6 @@
+-r requirements.txt
+SpeechRecognition>=3.14
+PyAudio>=0.2.14
+pyttsx3>=2.90
+# Opcional para reconocimiento sin conexión: instala vosk y descarga un modelo es-*.
+# pip install vosk
