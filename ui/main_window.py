@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import (
     QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFrame, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
+    QInputDialog, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
     QScrollArea, QSlider, QSplitter, QVBoxLayout, QWidget,
 )
 
@@ -212,6 +211,10 @@ class MemoryDialog(QDialog):
         controls = QHBoxLayout()
         controls.addWidget(edit)
         controls.addWidget(delete)
+        clear_all = QPushButton("Borrar toda la memoria")
+        clear_all.setObjectName("danger")
+        clear_all.clicked.connect(self.clear_all)
+        controls.addWidget(clear_all)
         controls.addStretch(1)
         layout.addLayout(controls)
         self.refresh()
@@ -229,7 +232,11 @@ class MemoryDialog(QDialog):
             if any(word in value.casefold() for word in ("contraseña", "password", "api key", "token", "tarjeta de crédito")):
                 QMessageBox.warning(self, "Dato sensible", "No guardo contraseñas, credenciales ni datos financieros.")
                 return
-            self.store.add_memory(value)
+            try:
+                self.store.add_memory(value)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Recuerdo no válido", str(exc))
+                return
             self.new_text.clear()
             self.refresh()
 
@@ -237,9 +244,13 @@ class MemoryDialog(QDialog):
         item = self.list.currentItem()
         if not item:
             return
-        value, ok = __import__("PySide6.QtWidgets", fromlist=["QInputDialog"]).QInputDialog.getText(self, "Editar recuerdo", "Contenido:", text=item.text().split("  ", 1)[-1])
+        value, ok = QInputDialog.getText(self, "Editar recuerdo", "Contenido:", text=item.text().split("  ", 1)[-1])
         if ok and value.strip():
-            self.store.update_memory(item.data(Qt.ItemDataRole.UserRole), value)
+            try:
+                self.store.update_memory(item.data(Qt.ItemDataRole.UserRole), value)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Recuerdo no válido", str(exc))
+                return
             self.refresh()
 
     def delete_memory(self) -> None:
@@ -249,6 +260,29 @@ class MemoryDialog(QDialog):
         if QMessageBox.question(self, "Eliminar recuerdo", "¿Eliminar este recuerdo de forma permanente?") == QMessageBox.StandardButton.Yes:
             self.store.delete_memory(item.data(Qt.ItemDataRole.UserRole))
             self.refresh()
+
+    def clear_all(self) -> None:
+        if not self.store.memories():
+            return
+        if QMessageBox.question(self, "Borrar toda la memoria", "¿Eliminar permanentemente todos los recuerdos guardados?") == QMessageBox.StandardButton.Yes:
+            self.store.clear_memories()
+            self.refresh()
+
+
+class ActivityDialog(QDialog):
+    def __init__(self, store: MemoryStore, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Registro local de actividad")
+        self.resize(700, 480)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Registro de solicitudes enviadas a herramientas locales y su resultado."))
+        listing = QListWidget()
+        layout.addWidget(listing, 1)
+        for action in store.actions():
+            text = f"{action['created_at']}\n{action['request']}\n→ {action['result']}"
+            listing.addItem(QListWidgetItem(text))
+        if listing.count() == 0:
+            listing.addItem("Todavía no hay acciones registradas.")
 
 
 class JarvisWindow(QMainWindow):
@@ -263,6 +297,7 @@ class JarvisWindow(QMainWindow):
         self.mic_enabled = False
         self.attachment_text = ""
         self.attachment_label = ""
+        self.action_id_before_send = 0
         self.setWindowTitle("JARVIS · Asistente personal")
         self.setMinimumSize(980, 680)
         self.resize(1500, 940)
@@ -286,7 +321,7 @@ class JarvisWindow(QMainWindow):
         header = QHBoxLayout()
         brand = QLabel("JARVIS")
         brand.setObjectName("brand")
-        subtitle = QLabel("PERSONAL INTELLIGENCE SYSTEM")
+        subtitle = QLabel("SISTEMA DE INTELIGENCIA PERSONAL")
         subtitle.setObjectName("muted")
         head_text = QVBoxLayout()
         head_text.addWidget(brand)
@@ -294,16 +329,20 @@ class JarvisWindow(QMainWindow):
         header.addLayout(head_text)
         header.addStretch(1)
         self.connection_label = QLabel("●  LOCAL · OLLAMA")
+        self.connection_label.setText("○  CONEXIÓN SIN COMPROBAR")
         self.connection_label.setObjectName("cyan")
         header.addWidget(self.connection_label)
         memory_button = QPushButton("Memoria")
         memory_button.clicked.connect(self._show_memory)
+        activity_button = QPushButton("Actividad")
+        activity_button.clicked.connect(lambda: ActivityDialog(self.store, self).exec())
         settings_button = QPushButton("Ajustes")
         settings_button.clicked.connect(self._show_settings)
         clear_button = QPushButton("Borrar historial")
         clear_button.setObjectName("danger")
         clear_button.clicked.connect(self._clear_history)
         header.addWidget(memory_button)
+        header.addWidget(activity_button)
         header.addWidget(settings_button)
         header.addWidget(clear_button)
         root.addLayout(header)
@@ -457,6 +496,8 @@ class JarvisWindow(QMainWindow):
         self._append_message("user", text)
         self.input.setEnabled(False)
         self._set_phase("thinking")
+        latest_actions = self.store.actions(1)
+        self.action_id_before_send = latest_actions[0]["id"] if latest_actions else 0
         attachment = self.attachment_text
         self.attachment_text = ""
         self.attachment_label = ""
@@ -470,6 +511,15 @@ class JarvisWindow(QMainWindow):
         self._append_message("assistant", answer)
         self.input.setEnabled(True)
         self.input.setFocus()
+        if answer.startswith("No pude obtener una respuesta del modelo:"):
+            self.connection_label.setText("●  PROVEEDOR SIN CONEXIÓN")
+        latest_actions = self.store.actions(1)
+        action_was_run = bool(latest_actions and latest_actions[0]["id"] > self.action_id_before_send)
+        if not action_was_run and not answer.startswith(("Por privacidad", "No pude completar la solicitud", "No pude obtener una respuesta del modelo:")):
+            if "localhost" in self.settings.base_url or "127.0.0.1" in self.settings.base_url:
+                self.connection_label.setText("●  OLLAMA RESPONDIÓ")
+            else:
+                self.connection_label.setText("●  PROVEEDOR RESPONDIÓ")
         if self.settings.auto_speak:
             self._speak(answer)
         else:
@@ -505,7 +555,7 @@ class JarvisWindow(QMainWindow):
             self.mic_button.setStyleSheet("")
             self.core_hint.setText("Micrófono desactivado.")
             if self.listen_worker and self.listen_worker.isRunning():
-                self.listen_worker.requestInterruption()
+                self.listen_worker.stop_capture()
         self._update_mic_indicator()
 
     def _update_mic_indicator(self) -> None:
@@ -580,7 +630,7 @@ class JarvisWindow(QMainWindow):
         MemoryDialog(self.store, self).exec()
 
     def _clear_history(self) -> None:
-        answer = QMessageBox.question(self, "Borrar historial", "¿Eliminar todas las conversaciones guardadas? Esta acción no se puede deshacer.")
+        answer = QMessageBox.question(self, "Borrar historial", "¿Eliminar conversaciones y registro de actividad? Los recuerdos se conservan. Esta acción no se puede deshacer.")
         if answer == QMessageBox.StandardButton.Yes:
             self.store.clear_history()
             while self.messages.count():
@@ -592,7 +642,9 @@ class JarvisWindow(QMainWindow):
     def _update_clock(self) -> None:
         now = __import__("datetime").datetime.now().astimezone()
         self.clock_label.setText(now.strftime("%H:%M:%S"))
-        self.date_label.setText(now.strftime("%A, %d %B %Y").upper())
+        weekdays = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+        months = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
+        self.date_label.setText(f"{weekdays[now.weekday()]}, {now.day} {months[now.month - 1]} {now.year}".upper())
 
     def _update_system(self) -> None:
         try:
@@ -608,9 +660,19 @@ class JarvisWindow(QMainWindow):
             self.battery_label.setText("BATERÍA   n/d")
 
     def closeEvent(self, event) -> None:
-        for worker in (self.listen_worker, self.speech_worker, self.chat_worker):
-            if worker and worker.isRunning():
+        workers = [worker for worker in (self.listen_worker, self.speech_worker, self.chat_worker) if worker and worker.isRunning()]
+        if workers:
+            event.ignore()
+            self.core_hint.setText("Cerrando después de detener la tarea activa…")
+            for worker in workers:
                 if isinstance(worker, SpeechWorker):
                     worker.stop_speaking()
-                worker.wait(1200)
+                elif isinstance(worker, ListenWorker):
+                    worker.stop_capture()
+                worker.finished.connect(self._close_when_workers_finish)
+            return
         event.accept()
+
+    def _close_when_workers_finish(self) -> None:
+        if not any(worker and worker.isRunning() for worker in (self.listen_worker, self.speech_worker, self.chat_worker)):
+            self.close()

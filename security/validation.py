@@ -3,8 +3,9 @@ import unicodedata
 
 
 SENSITIVE_TERMS = re.compile(
-    r"\b(contrase(?:ñ|n)a|password|api[ -]?key|clave secreta|token|cvv|cvc|"
-    r"tarjeta de cr[eé]dito|n[uú]mero de tarjeta|dato bancario)\b",
+    r"\b(contrase(?:ñ|n)a|password|api[ -]?key|clave\s+(?:api|secreta)|credential|"
+    r"credenciales?|secretos?|token|cvv|cvc|dni|pasaporte|tarjeta de cr[eé]dito|"
+    r"n[uú]mero de tarjeta|dato bancario)\b",
     re.IGNORECASE,
 )
 

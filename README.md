@@ -38,7 +38,7 @@ La instalación base de PySide6 puede obtenerse con `pip install PySide6`; el pr
 
 ### Voz
 
-Ejecuta `install_voice.bat` para instalar reconocimiento y TTS opcionales. Luego habilita el micrófono en JARVIS y pulsa **Pulsar para hablar**. La captura no es permanente: el indicador aparece durante la escucha y puedes apagar el micrófono. Google Speech Recognition envía el audio a su servicio para transcribirlo. Para voz sin conexión, instala `vosk`, descarga un modelo español compatible y define `JARVIS_STT=vosk` y `VOSK_MODEL_PATH` en el entorno. La voz de salida usa SAPI5 local; su naturalidad y el idioma dependen de las voces instaladas en Windows. **Detener voz** interrumpe la reproducción.
+Ejecuta `install_voice.bat` para instalar reconocimiento y TTS opcionales. Luego habilita el micrófono en JARVIS y pulsa **Pulsar para hablar**. La captura no es permanente: el indicador aparece durante la escucha y puedes apagar el micrófono. Google Speech Recognition envía el audio a su servicio para transcribirlo, requiere internet y su API pública puede cambiar o limitar solicitudes. Para voz sin conexión, instala `vosk`, descarga un modelo español compatible y define `JARVIS_STT=vosk` y `VOSK_MODEL_PATH` en el entorno. La voz de salida usa SAPI5 local; su naturalidad y el idioma dependen de las voces instaladas en Windows. **Detener voz** interrumpe la reproducción.
 
 Windows puede requerir que habilites el acceso al micrófono para aplicaciones de escritorio en Configuración → Privacidad y seguridad → Micrófono.
 
@@ -47,13 +47,13 @@ Windows puede requerir que habilites el acceso al micrófono para aplicaciones d
 El perfil local predeterminado no requiere una clave. Para otro endpoint compatible, define las variables antes de abrir la app:
 
 ```powershell
-$env:JARVIS_BASE_URL = "https://api.ejemplo.com/v1"
-$env:JARVIS_MODEL = "nombre-del-modelo"
-$env:JARVIS_API_KEY = "tu-clave"
+[Environment]::SetEnvironmentVariable("JARVIS_BASE_URL", "https://api.ejemplo.com/v1", "User")
+[Environment]::SetEnvironmentVariable("JARVIS_MODEL", "nombre-del-modelo", "User")
+[Environment]::SetEnvironmentVariable("JARVIS_API_KEY", "tu-clave", "User")
 .\.venv\Scripts\python.exe main.py
 ```
 
-La aplicación lee la clave solo desde `JARVIS_API_KEY`, no la muestra ni la guarda en `settings.json`. El ejemplo `.env.example` documenta variables; no es un archivo de secretos ni se carga automáticamente.
+Reinicia JARVIS después de definirlas para que las lea desde el entorno de Windows. La aplicación lee la clave solo desde `JARVIS_API_KEY`, no la muestra ni la guarda en `settings.json`. El ejemplo `.env.example` documenta variables; no es un archivo de secretos ni se carga automáticamente.
 
 ## Capacidades que sí están implementadas
 
@@ -64,12 +64,13 @@ La aplicación lee la clave solo desde `JARVIS_API_KEY`, no la muestra ni la gua
 - Crear notas de texto en `%APPDATA%\Jarvis\Notas`.
 - Consultar hora, fecha, CPU, memoria, almacenamiento y batería disponibles.
 - Guardar, listar, editar y eliminar recuerdos a petición del usuario; borrar historial con confirmación.
-- Adjuntar explícitamente archivos `.txt`/`.md` de hasta 1 MB para resumen; se envían al modelo y no se guardan en el historial.
+- Ver el registro local de herramientas ejecutadas; borrar historial también borra ese registro.
+- Adjuntar explícitamente archivos `.txt`/`.md` de hasta 1 MB para resumen; hasta 30 000 caracteres se envían al modelo y no se guardan en el historial.
 - Indicadores visuales, conversación continua escrita y entrada de voz por pulsación.
 
 ## Límites de esta primera entrega
 
-No hay activación continua por frase de palabra clave, control del volumen multimedia, cierre de procesos, organización/movimiento de archivos, notificaciones de recordatorio, clima, lectura PDF, rutina automatizada, icono de bandeja ni instalador empaquetado. La voz de entrada y salida necesita sus paquetes/dispositivo/permisos; el modo Google necesita internet; Vosk necesita su modelo local. No se ejecutan comandos de shell generados por el modelo. Las herramientas con efectos sensibles se mantienen fuera de esta versión.
+No hay activación continua por frase de palabra clave, control del volumen o reproducción multimedia, cierre de procesos, organización/movimiento de archivos, notificaciones de recordatorio, clima, lectura PDF, rutina automatizada, icono de bandeja ni instalador empaquetado. Estas órdenes reciben una respuesta explícita de no disponibilidad cuando son reconocidas. La voz de entrada y salida necesita sus paquetes/dispositivo/permisos; el modo Google necesita internet; Vosk necesita su modelo local. No se ejecutan comandos de shell generados por el modelo. Las herramientas con efectos sensibles se mantienen fuera de esta versión.
 
 ## Verificación
 

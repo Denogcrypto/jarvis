@@ -11,6 +11,7 @@ APP_ALIASES = {
     "visual studio code": "vscode",
     "vscode": "vscode",
     "código": "vscode",
+    "codigo": "vscode",
     "bloc de notas": "notepad",
     "notepad": "notepad",
     "calculadora": "calculator",

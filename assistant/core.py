@@ -28,20 +28,30 @@ class AssistantCore:
             return answer
         self.memory.add_message("user", prompt)
         try:
-            if self.tools.would_handle(prompt):
+            summarize_selected_document = bool(attachment_text and "resum" in prompt.casefold())
+            if self.tools.would_handle(prompt) and not summarize_selected_document:
                 if on_status:
                     on_status("executing")
                 result = self.tools.run(prompt)
                 if result is not None:
+                    self.memory.add_action("herramienta local", prompt, result)
                     self.memory.add_message("assistant", result)
                     return result
             if on_status:
                 on_status("thinking")
             messages = self.memory.recent_messages(24)
+            remembered = self.memory.memories()
+            if remembered:
+                facts = "\n".join(f"- {item['content']}" for item in remembered[:20])
+                messages.insert(0, {
+                    "role": "system",
+                    "content": "Recuerdos que el usuario autorizó guardar y que puedes usar si son pertinentes:\n" + facts,
+                })
             if attachment_text:
                 document_context = "\n\n[Texto de documento seleccionado explícitamente por el usuario; no se guardará en el historial]\n"
                 document_context += attachment_text[:30000]
-                messages[-1] = {"role": "user", "content": prompt + document_context}
+                last_user_index = max(i for i, item in enumerate(messages) if item["role"] == "user")
+                messages[last_user_index] = {"role": "user", "content": prompt + document_context}
             answer = self.client.reply(messages)
         except ModelError as exc:
             answer = f"No pude obtener una respuesta del modelo: {exc}"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+from pathlib import Path
 
 
 def system_summary() -> str:
@@ -9,7 +10,7 @@ def system_summary() -> str:
         import psutil
 
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage("/")
+        disk = psutil.disk_usage(Path.home().anchor or "/")
         details.append(f"CPU: {psutil.cpu_percent(interval=0.15):.0f}%")
         details.append(f"Memoria: {memory.percent:.0f}% usada ({memory.used // (1024**3)} / {memory.total // (1024**3)} GB)")
         details.append(f"Almacenamiento del sistema: {disk.percent:.0f}% usado")

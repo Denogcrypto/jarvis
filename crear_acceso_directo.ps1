@@ -1,4 +1,5 @@
-$ErrorActionPreference = "Stop"+$project = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ErrorActionPreference = "Stop"
+$project = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pythonw = Join-Path $project ".venv\Scripts\pythonw.exe"
 if (-not (Test-Path -LiteralPath $pythonw)) {
     throw "Primero ejecuta run.bat para crear el entorno e instalar las dependencias."

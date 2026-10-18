@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 from config.settings import data_directory
+from security.validation import contains_sensitive_data
 
 
 class MemoryStore:
@@ -26,13 +28,28 @@ class MemoryStore:
                     content TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS actions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    request TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 """
             )
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     @staticmethod
     def _now() -> str:
@@ -61,11 +78,28 @@ class MemoryStore:
     def clear_history(self) -> None:
         with self._connect() as db:
             db.execute("DELETE FROM messages")
+            db.execute("DELETE FROM actions")
+
+    def add_action(self, name: str, request: str, result: str) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO actions(name,request,result,created_at) VALUES(?,?,?,?)",
+                (name[:80], request[:1000], result[:3000], self._now()),
+            )
+
+    def actions(self, limit: int = 100) -> list[dict]:
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,name,request,result,created_at FROM actions ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def add_memory(self, content: str, category: str = "dato") -> int:
         value = content.strip()
         if not value or len(value) > 1000:
             raise ValueError("El recuerdo debe tener entre 1 y 1000 caracteres")
+        if contains_sensitive_data(value):
+            raise ValueError("No se guardan contraseñas, credenciales ni datos financieros")
         with self._connect() as db:
             cursor = db.execute(
                 "INSERT INTO memories(category,content,created_at) VALUES(?,?,?)",
@@ -82,6 +116,8 @@ class MemoryStore:
         value = content.strip()
         if not value or len(value) > 1000:
             raise ValueError("El recuerdo debe tener entre 1 y 1000 caracteres")
+        if contains_sensitive_data(value):
+            raise ValueError("No se guardan contraseñas, credenciales ni datos financieros")
         with self._connect() as db:
             db.execute("UPDATE memories SET content=? WHERE id=?", (value, memory_id))
 
