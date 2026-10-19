@@ -81,3 +81,11 @@ python -m unittest discover -v
 ```
 
 Las pruebas usan SQLite temporal y no requieren modelo, micrófono ni acceso a archivos personales.
+
+##
+Con Openai
+
+set "JARVIS_BASE_URL=https://api.openai.com/v1"
+set "JARVIS_MODEL=gpt-5.4-mini"
+set "JARVIS_API_KEY=PEGÁ_TU_CLAVE_ACÁ"
+run.bat
